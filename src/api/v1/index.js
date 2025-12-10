@@ -47,6 +47,7 @@ router.post('/posts/:id/comments', authenticate, postsController.addComment);
 // ========== UPLOAD ROUTES ==========
 router.get('/uploads/presign', authenticate, uploadsController.getPresignedUrl);
 router.post('/uploads/local', uploadsController.uploadLocal);
+router.get('/uploads/file/*', uploadsController.serveFile); // Serve files with CORS headers
 
 // ========== ADMIN ROUTES ==========
 // User management
