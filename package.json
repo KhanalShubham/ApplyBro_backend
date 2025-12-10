@@ -1,0 +1,49 @@
+{
+  "name": "applybro-backend",
+  "version": "1.0.0",
+  "description": "ApplyBro Backend API - Scholarship Platform",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "eslint src/**/*.js",
+    "seed:admin": "node scripts/seed-admin.js"
+  },
+  "keywords": ["scholarship", "api", "express", "mongodb"],
+  "author": "ApplyBro Team",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.490.0",
+    "@aws-sdk/s3-request-presigner": "^3.490.0",
+    "aws-sdk": "^2.1518.0",
+    "bcrypt": "^5.1.1",
+    "bullmq": "^5.7.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
+    "ioredis": "^5.3.2",
+    "joi": "^17.11.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.0.3",
+    "multer": "^1.4.5-lts.1",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.23.7",
+    "@babel/preset-env": "^7.23.7",
+    "babel-jest": "^29.7.0",
+    "@sendgrid/mail": "^8.1.1",
+    "eslint": "^8.56.0",
+    "jest": "^29.7.0",
+    "mongodb-memory-server": "^9.1.3",
+    "nodemon": "^3.0.2",
+    "supertest": "^6.3.3"
+  }
+}
+
+
