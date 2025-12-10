@@ -20,6 +20,7 @@ export const getScholarships = async (req, res) => {
       fields,
       status,
       deadlineBefore,
+      adminOnly,
       page = 1,
       pageSize = 20,
       sort = 'deadline',
@@ -51,6 +52,11 @@ export const getScholarships = async (req, res) => {
     }
     if (!req.query.includeUnverified) {
       query.verified = true;
+    }
+    // Only scholarships created by admins (optional filter for client)
+    if (adminOnly === 'true') {
+      const adminIds = await User.find({ role: 'admin' }).distinct('_id');
+      query.createdBy = { $in: adminIds };
     }
     
     // Pagination

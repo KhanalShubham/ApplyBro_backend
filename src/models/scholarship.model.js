@@ -25,6 +25,29 @@ const ScholarshipSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  imageUrl: {
+    type: String,
+    default: ''
+  },
+  university: {
+    name: {
+      type: String,
+      required: [true, 'University name is required']
+    },
+    location: {
+      country: { type: String, required: [true, 'University country is required'] },
+      city: { type: String, default: '' },
+      address: { type: String, default: '' }
+    },
+    website: {
+      type: String,
+      default: ''
+    }
+  },
+  requirements: [{
+    type: String,
+    trim: true
+  }],
   level: {
     type: String,
     enum: ['+2', 'Bachelor', 'Master', 'PhD'],

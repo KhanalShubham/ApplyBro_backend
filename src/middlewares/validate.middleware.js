@@ -69,6 +69,17 @@ export const schemas = {
       description: Joi.string().min(10).required(),
       country: Joi.string().required(),
       countryFlag: Joi.string().optional(),
+      imageUrl: Joi.string().uri().optional().allow(''),
+      university: Joi.object({
+        name: Joi.string().min(2).max(200).required(),
+        location: Joi.object({
+          country: Joi.string().required(),
+          city: Joi.string().optional().allow(''),
+          address: Joi.string().optional().allow('')
+        }).required(),
+        website: Joi.string().uri().optional().allow('')
+      }).required(),
+      requirements: Joi.array().items(Joi.string().max(500)).optional(),
       level: Joi.string().valid('+2', 'Bachelor', 'Master', 'PhD').required(),
       fields: Joi.array().items(Joi.string()).optional(),
       deadline: Joi.date().greater('now').required(),
@@ -93,6 +104,18 @@ export const schemas = {
       title: Joi.string().min(5).max(200).optional(),
       description: Joi.string().min(10).optional(),
       country: Joi.string().optional(),
+      countryFlag: Joi.string().optional(),
+      imageUrl: Joi.string().uri().optional().allow(''),
+      university: Joi.object({
+        name: Joi.string().min(2).max(200).optional(),
+        location: Joi.object({
+          country: Joi.string().optional(),
+          city: Joi.string().optional().allow(''),
+          address: Joi.string().optional().allow('')
+        }).optional(),
+        website: Joi.string().uri().optional().allow('')
+      }).optional(),
+      requirements: Joi.array().items(Joi.string().max(500)).optional(),
       level: Joi.string().valid('+2', 'Bachelor', 'Master', 'PhD').optional(),
       deadline: Joi.date().optional(),
       status: Joi.string().valid('open', 'upcoming', 'closed').optional()
