@@ -1,5 +1,6 @@
 import Scholarship from '../../models/scholarship.model.js';
 import User from '../../models/user.model.js';
+import AdminAction from '../../models/adminAction.model.js';
 import { getRecommendations, getPopularScholarships } from '../../services/recommendation.service.js';
 import { authenticate, optionalAuth } from '../../middlewares/auth.middleware.js';
 import { requireAdmin } from '../../middlewares/auth.middleware.js';
@@ -165,6 +166,22 @@ export const createScholarship = async (req, res) => {
     
     await scholarship.populate('college', 'name country');
     
+    // Audit: admin created scholarship
+    if (req.user?.role === 'admin') {
+      try {
+        await AdminAction.create({
+          admin: req.userId,
+          actionType: 'create-scholarship',
+          targetType: 'scholarship',
+          targetId: scholarship._id,
+          targetLabel: scholarship.title,
+          details: `Created scholarship ${scholarship.title}`
+        });
+      } catch (auditErr) {
+        logger.warn('Audit log failed (create-scholarship)', { error: auditErr.message });
+      }
+    }
+    
     logger.info(`Scholarship created: ${scholarship.title} by ${req.user.email}`);
     
     res.status(201).json({
@@ -200,6 +217,22 @@ export const updateScholarship = async (req, res) => {
         status: 'error',
         message: 'Scholarship not found'
       });
+    }
+    
+    // Audit: admin updated scholarship
+    if (req.user?.role === 'admin') {
+      try {
+        await AdminAction.create({
+          admin: req.userId,
+          actionType: 'update-scholarship',
+          targetType: 'scholarship',
+          targetId: scholarship._id,
+          targetLabel: scholarship.title,
+          details: 'Updated scholarship'
+        });
+      } catch (auditErr) {
+        logger.warn('Audit log failed (update-scholarship)', { error: auditErr.message });
+      }
     }
     
     logger.info(`Scholarship updated: ${scholarship.title} by ${req.user.email}`);
@@ -240,6 +273,22 @@ export const deleteScholarship = async (req, res) => {
       { bookmarks: id },
       { $pull: { bookmarks: id } }
     );
+    
+    // Audit: admin deleted scholarship
+    if (req.user?.role === 'admin') {
+      try {
+        await AdminAction.create({
+          admin: req.userId,
+          actionType: 'delete-scholarship',
+          targetType: 'scholarship',
+          targetId: scholarship._id,
+          targetLabel: scholarship.title,
+          details: 'Deleted scholarship'
+        });
+      } catch (auditErr) {
+        logger.warn('Audit log failed (delete-scholarship)', { error: auditErr.message });
+      }
+    }
     
     logger.info(`Scholarship deleted: ${scholarship.title} by ${req.user.email}`);
     

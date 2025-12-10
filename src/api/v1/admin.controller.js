@@ -10,14 +10,15 @@ import { logger } from '../../utils/logger.js';
 /**
  * Log admin action for audit trail
  */
-const logAdminAction = async (adminId, actionType, targetId, targetType, details = {}) => {
+const logAdminAction = async (adminId, actionType, targetId, targetType, details = {}, metadata = {}) => {
   try {
     await AdminAction.create({
-      adminId,
+      admin: adminId,
       actionType,
       targetId,
       targetType,
-      details
+      details,
+      metadata
     });
   } catch (error) {
     logger.error('Failed to log admin action:', error);
@@ -154,7 +155,7 @@ export const deleteUser = async (req, res) => {
     
     await logAdminAction(
       req.userId,
-      'user_deleted',
+    'user_deleted',
       id,
       'User',
       { email: user.email }
@@ -279,7 +280,7 @@ export const verifyDocument = async (req, res) => {
     
     await logAdminAction(
       req.userId,
-      status === 'verified' ? 'document_verified' : 'document_rejected',
+    status === 'verified' ? 'document_verified' : 'document_rejected',
       docId,
       'Document',
       { userId, type: doc.type }
@@ -387,7 +388,7 @@ export const moderatePost = async (req, res) => {
     
     await logAdminAction(
       req.userId,
-      status === 'approved' ? 'post_approved' : 'post_declined',
+    status === 'approved' ? 'post_approved' : 'post_declined',
       id,
       'Post',
       { title: post.title }
@@ -481,6 +482,47 @@ export const getAnalytics = async (req, res) => {
     res.status(500).json({
       status: 'error',
       message: 'Failed to fetch analytics'
+    });
+  }
+};
+
+/**
+ * GET /api/v1/admin/actions
+ * List admin audit actions (paginated)
+ */
+export const getAdminActions = async (req, res) => {
+  try {
+    const { page = 1, pageSize = 20 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(pageSize);
+    const limit = parseInt(pageSize);
+    
+    const [actions, total] = await Promise.all([
+      AdminAction.find({})
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('admin', 'name email')
+        .lean(),
+      AdminAction.countDocuments({})
+    ]);
+    
+    res.json({
+      status: 'success',
+      data: {
+        actions,
+        pagination: {
+          page: parseInt(page),
+          pageSize: parseInt(pageSize),
+          total,
+          totalPages: Math.ceil(total / parseInt(pageSize))
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('Get admin actions error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch admin actions'
     });
   }
 };

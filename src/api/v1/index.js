@@ -64,5 +64,6 @@ router.put('/admin/posts/:id/moderate', authenticate, requireAdmin, adminControl
 
 // Analytics
 router.get('/admin/analytics', authenticate, requireAdmin, adminController.getAnalytics);
+router.get('/admin/actions', authenticate, requireAdmin, adminController.getAdminActions);
 
 export default router;
