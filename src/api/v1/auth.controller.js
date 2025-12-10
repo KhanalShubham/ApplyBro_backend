@@ -20,10 +20,15 @@ import { logger } from '../../utils/logger.js';
 export const signup = async (req, res) => {
   try {
     const { name, email, password, country } = req.body;
+    logger.info('Auth: signup attempt', {
+      email: email?.toLowerCase?.(),
+      ip: req.ip
+    });
     
     // Check if user already exists
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
+      logger.warn('Auth: signup email exists', { email: email.toLowerCase(), ip: req.ip });
       return res.status(409).json({
         status: 'error',
         message: 'User with this email already exists'
@@ -62,7 +67,11 @@ export const signup = async (req, res) => {
     // Save refresh token to user
     await User.findByIdAndUpdate(user._id, { refreshToken });
     
-    logger.info(`New user registered: ${user.email}`);
+    logger.info('Auth: signup success', {
+      email: user.email,
+      userId: user._id,
+      ip: req.ip
+    });
     
     res.status(201).json({
       status: 'success',
@@ -80,7 +89,7 @@ export const signup = async (req, res) => {
       }
     });
   } catch (error) {
-    logger.error('Signup error:', error);
+    logger.error('Auth: signup error', { message: error.message, stack: error.stack, ip: req.ip });
     res.status(500).json({
       status: 'error',
       message: error.message || 'Failed to create account'
@@ -95,12 +104,17 @@ export const signup = async (req, res) => {
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    logger.info('Auth: login attempt', {
+      email: email?.toLowerCase?.(),
+      ip: req.ip
+    });
     
     // Find user with password hash
     const user = await User.findOne({ email: email.toLowerCase() })
       .select('+passwordHash');
     
     if (!user) {
+      logger.warn('Auth: login failed - user not found', { email: email.toLowerCase(), ip: req.ip });
       return res.status(401).json({
         status: 'error',
         message: 'Invalid email or password'
@@ -110,6 +124,7 @@ export const login = async (req, res) => {
     // Compare password
     const isPasswordValid = await comparePassword(password, user.passwordHash);
     if (!isPasswordValid) {
+      logger.warn('Auth: login failed - bad password', { email: email.toLowerCase(), userId: user._id, ip: req.ip });
       return res.status(401).json({
         status: 'error',
         message: 'Invalid email or password'
@@ -123,7 +138,7 @@ export const login = async (req, res) => {
     // Save refresh token
     await User.findByIdAndUpdate(user._id, { refreshToken });
     
-    logger.info(`User logged in: ${user.email}`);
+    logger.info('Auth: login success', { email: user.email, userId: user._id, ip: req.ip });
     
     res.json({
       status: 'success',
@@ -142,7 +157,7 @@ export const login = async (req, res) => {
       }
     });
   } catch (error) {
-    logger.error('Login error:', error);
+    logger.error('Auth: login error', { message: error.message, stack: error.stack, ip: req.ip });
     res.status(500).json({
       status: 'error',
       message: error.message || 'Login failed'
@@ -157,6 +172,7 @@ export const login = async (req, res) => {
 export const refresh = async (req, res) => {
   try {
     const { refreshToken } = req.body;
+    logger.info('Auth: refresh attempt', { ip: req.ip });
     
     if (!refreshToken) {
       return res.status(400).json({
@@ -172,6 +188,7 @@ export const refresh = async (req, res) => {
     const user = await User.findById(decoded.id).select('+refreshToken');
     
     if (!user || user.refreshToken !== refreshToken) {
+      logger.warn('Auth: refresh failed - token mismatch', { userId: decoded?.id, ip: req.ip });
       return res.status(401).json({
         status: 'error',
         message: 'Invalid refresh token'
@@ -193,7 +210,7 @@ export const refresh = async (req, res) => {
       }
     });
   } catch (error) {
-    logger.error('Refresh token error:', error);
+    logger.error('Auth: refresh error', { message: error.message, stack: error.stack, ip: req.ip });
     res.status(401).json({
       status: 'error',
       message: error.message || 'Invalid or expired refresh token'
@@ -211,7 +228,7 @@ export const logout = async (req, res) => {
     
     if (userId) {
       await User.findByIdAndUpdate(userId, { refreshToken: null });
-      logger.info(`User logged out: ${userId}`);
+      logger.info('Auth: logout', { userId, ip: req.ip });
     }
     
     res.json({

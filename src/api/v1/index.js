@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate, requireAdmin, optionalAuth } from '../../middlewares/auth.middleware.js';
+import { validate, schemas } from '../../middlewares/validate.middleware.js';
 
 // Import controllers
 import * as authController from './auth.controller.js';
@@ -12,9 +13,9 @@ import * as uploadsController from './uploads.controller.js';
 const router = express.Router();
 
 // ========== AUTH ROUTES ==========
-router.post('/auth/signup', authController.signup);
-router.post('/auth/login', authController.login);
-router.post('/auth/refresh', authController.refresh);
+router.post('/auth/signup', validate(schemas.signup), authController.signup);
+router.post('/auth/login', validate(schemas.login), authController.login);
+router.post('/auth/refresh', validate(schemas.refreshToken), authController.refresh);
 router.post('/auth/logout', authenticate, authController.logout);
 router.get('/auth/me', authenticate, authController.getMe);
 

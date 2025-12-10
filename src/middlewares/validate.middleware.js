@@ -3,10 +3,11 @@ import Joi from 'joi';
 
 export const validate = (schema) => {
   return (req, res, next) => {
+    // Keep request parts separate so schemas expecting body/query/params work
     const dataToValidate = {
-      ...req.body,
-      ...req.query,
-      ...req.params
+      body: req.body,
+      query: req.query,
+      params: req.params
     };
     
     const { error, value } = schema.validate(dataToValidate, {
