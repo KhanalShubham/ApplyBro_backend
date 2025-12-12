@@ -30,9 +30,11 @@ export const getPosts = async (req, res) => {
     // Only show approved posts to non-admins
     if (req.user?.role !== 'admin') {
       query.status = 'approved';
-    } else if (status) {
+    } else if (status && status !== 'all') {
+      // Admins can filter by specific status, or see all posts (including removed) when status is 'all' or undefined
       query.status = status;
     }
+    // If admin and status is 'all' or undefined, don't filter by status - show all posts
     
     if (category) query.category = category;
     if (author) query.author = author;
