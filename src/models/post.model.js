@@ -18,8 +18,23 @@ const PostSchema = new mongoose.Schema({
     trim: true,
     maxlength: 5000
   },
-  imageUrl: {
+  images: [{
+    url: {
+      type: String,
+      required: true
+    },
+    alt: {
+      type: String,
+      default: ''
+    }
+  }],
+  tags: [{
     type: String,
+    trim: true
+  }],
+  country: {
+    type: String,
+    trim: true,
     default: ''
   },
   category: {
@@ -29,8 +44,12 @@ const PostSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'approved', 'declined'],
+    enum: ['pending', 'approved', 'declined', 'removed'],
     default: 'pending'
+  },
+  declineReason: {
+    type: String,
+    default: null
   },
   adminNote: {
     type: String,
@@ -45,26 +64,22 @@ const PostSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  likesCount: {
+    type: Number,
+    default: 0
+  },
+  commentsCount: {
+    type: Number,
+    default: 0
+  },
+  reportedCount: {
+    type: Number,
+    default: 0
+  },
+  // Keep for backward compatibility but prefer separate Like collection
   likes: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
-  }],
-  comments: [{
-    author: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true
-    },
-    text: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 1000
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now
-    }
   }],
   createdAt: {
     type: Date,
@@ -81,6 +96,9 @@ PostSchema.index({ author: 1 });
 PostSchema.index({ status: 1 });
 PostSchema.index({ createdAt: -1 });
 PostSchema.index({ category: 1 });
+PostSchema.index({ tags: 1 });
+PostSchema.index({ country: 1 });
+PostSchema.index({ 'status': 1, 'createdAt': -1 }); // For admin queue
 
 // Update timestamp
 PostSchema.pre('save', function(next) {

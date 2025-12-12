@@ -1,6 +1,9 @@
 import User from '../../models/user.model.js';
 import UserDocument from '../../models/userDocument.model.js';
 import Post from '../../models/post.model.js';
+import Comment from '../../models/comment.model.js';
+import Report from '../../models/report.model.js';
+import AuditLog from '../../models/auditLog.model.js';
 import Scholarship from '../../models/scholarship.model.js';
 import College from '../../models/college.model.js';
 import AdminAction from '../../models/adminAction.model.js';
@@ -583,15 +586,88 @@ export const getPendingPosts = async (req, res) => {
  * PUT /api/v1/admin/posts/:id/moderate
  * Approve or decline a post
  */
-export const moderatePost = async (req, res) => {
+/**
+ * POST /api/v1/admin/posts/:id/approve
+ * Approve a post
+ */
+export const approvePost = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, adminNote } = req.body;
+    const { messageToUser } = req.body;
     
-    if (!['approved', 'declined'].includes(status)) {
+    const post = await Post.findById(id).populate('author');
+    
+    if (!post) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Post not found'
+      });
+    }
+    
+    post.status = 'approved';
+    post.moderatedBy = req.userId;
+    post.moderatedAt = new Date();
+    post.declineReason = null;
+    if (messageToUser) post.adminNote = messageToUser;
+    
+    await post.save();
+    
+    // Create audit log
+    await AuditLog.create({
+      adminId: req.userId,
+      action: 'approve_post',
+      targetType: 'post',
+      targetId: post._id,
+      details: { title: post.title, messageToUser }
+    });
+    
+    // Log admin action
+    await logAdminAction(
+      req.userId,
+      'post_approved',
+      id,
+      'Post',
+      { title: post.title }
+    );
+    
+    // Send email notification to author
+    if (post.author && post.author.email) {
+      try {
+        await sendPostModerationEmail(post.author, post, 'approved', messageToUser);
+      } catch (emailError) {
+        logger.error('Failed to send moderation email:', emailError);
+      }
+    }
+    
+    logger.info(`Post approved: ${post.title} by ${req.user.email}`);
+    
+    res.json({
+      status: 'success',
+      message: 'Post approved successfully',
+      data: { post }
+    });
+  } catch (error) {
+    logger.error('Approve post error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to approve post'
+    });
+  }
+};
+
+/**
+ * POST /api/v1/admin/posts/:id/decline
+ * Decline a post with reason
+ */
+export const declinePost = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { declineReason, adminNote } = req.body;
+    
+    if (!declineReason || !declineReason.trim()) {
       return res.status(400).json({
         status: 'error',
-        message: 'Status must be approved or declined'
+        message: 'Decline reason is required'
       });
     }
     
@@ -604,42 +680,299 @@ export const moderatePost = async (req, res) => {
       });
     }
     
-    post.status = status;
+    post.status = 'declined';
     post.moderatedBy = req.userId;
     post.moderatedAt = new Date();
+    post.declineReason = declineReason.trim();
     if (adminNote) post.adminNote = adminNote;
     
     await post.save();
     
+    // Create audit log
+    await AuditLog.create({
+      adminId: req.userId,
+      action: 'decline_post',
+      targetType: 'post',
+      targetId: post._id,
+      details: { title: post.title, declineReason, adminNote }
+    });
+    
+    // Log admin action
+    await logAdminAction(
+      req.userId,
+      'post_declined',
+      id,
+      'Post',
+      { title: post.title, declineReason }
+    );
+    
     // Send email notification to author
     if (post.author && post.author.email) {
       try {
-        await sendPostModerationEmail(post.author, post, status, adminNote);
+        await sendPostModerationEmail(post.author, post, 'declined', declineReason);
       } catch (emailError) {
         logger.error('Failed to send moderation email:', emailError);
       }
     }
     
+    logger.info(`Post declined: ${post.title} by ${req.user.email}`);
+    
+    res.json({
+      status: 'success',
+      message: 'Post declined successfully',
+      data: { post }
+    });
+  } catch (error) {
+    logger.error('Decline post error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to decline post'
+    });
+  }
+};
+
+/**
+ * DELETE /api/v1/admin/posts/:id
+ * Delete/Remove a post (admin only)
+ */
+export const deletePost = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const post = await Post.findById(id);
+    
+    if (!post) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Post not found'
+      });
+    }
+    
+    // Mark as removed instead of deleting (for audit trail)
+    post.status = 'removed';
+    post.moderatedBy = req.userId;
+    post.moderatedAt = new Date();
+    await post.save();
+    
+    // Create audit log
+    await AuditLog.create({
+      adminId: req.userId,
+      action: 'delete_post',
+      targetType: 'post',
+      targetId: post._id,
+      details: { title: post.title }
+    });
+    
     await logAdminAction(
       req.userId,
-    status === 'approved' ? 'post_approved' : 'post_declined',
+      'post_deleted',
       id,
       'Post',
       { title: post.title }
     );
     
-    logger.info(`Post ${status}: ${post.title} by ${req.user.email}`);
+    logger.info(`Post deleted: ${post.title} by ${req.user.email}`);
     
     res.json({
       status: 'success',
-      message: `Post ${status} successfully`,
-      data: { post }
+      message: 'Post deleted successfully'
     });
   } catch (error) {
-    logger.error('Moderate post error:', error);
+    logger.error('Delete post error:', error);
     res.status(500).json({
       status: 'error',
-      message: 'Failed to moderate post'
+      message: 'Failed to delete post'
+    });
+  }
+};
+
+/**
+ * POST /api/v1/admin/comments/:id/remove
+ * Remove a comment (admin only)
+ */
+export const removeComment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    
+    const comment = await Comment.findById(id).populate('postId');
+    
+    if (!comment) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Comment not found'
+      });
+    }
+    
+    comment.status = 'removed';
+    await comment.save();
+    
+    // Decrement comments count on post
+    if (comment.postId) {
+      const post = await Post.findById(comment.postId._id || comment.postId);
+      if (post) {
+        post.commentsCount = Math.max(0, (post.commentsCount || 0) - 1);
+        await post.save();
+      }
+    }
+    
+    // Create audit log
+    await AuditLog.create({
+      adminId: req.userId,
+      action: 'remove_comment',
+      targetType: 'comment',
+      targetId: comment._id,
+      details: { reason }
+    });
+    
+    await logAdminAction(
+      req.userId,
+      'comment_removed',
+      id,
+      'Comment',
+      { reason }
+    );
+    
+    logger.info(`Comment removed: ${id} by ${req.user.email}`);
+    
+    res.json({
+      status: 'success',
+      message: 'Comment removed successfully'
+    });
+  } catch (error) {
+    logger.error('Remove comment error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to remove comment'
+    });
+  }
+};
+
+/**
+ * GET /api/v1/admin/reports
+ * Get all reports (open, reviewed, resolved)
+ */
+export const getReports = async (req, res) => {
+  try {
+    const { status = 'open', page = 1, pageSize = 20 } = req.query;
+    
+    const query = status !== 'all' ? { status } : {};
+    
+    const skip = (parseInt(page) - 1) * parseInt(pageSize);
+    const limit = parseInt(pageSize);
+    
+    const [reports, total] = await Promise.all([
+      Report.find(query)
+        .populate('reporter', 'name email')
+        .populate('reviewedBy', 'name email')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Report.countDocuments(query)
+    ]);
+    
+    // Populate resource details
+    for (let report of reports) {
+      if (report.resourceType === 'post') {
+        const post = await Post.findById(report.resourceId).select('title author').lean();
+        report.resource = post;
+      } else if (report.resourceType === 'comment') {
+        const comment = await Comment.findById(report.resourceId).select('body author postId').populate('postId', 'title').lean();
+        report.resource = comment;
+      }
+    }
+    
+    res.json({
+      status: 'success',
+      data: {
+        reports,
+        pagination: {
+          page: parseInt(page),
+          pageSize: parseInt(pageSize),
+          total,
+          totalPages: Math.ceil(total / parseInt(pageSize))
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('Get reports error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch reports'
+    });
+  }
+};
+
+/**
+ * POST /api/v1/admin/reports/:id/resolve
+ * Resolve a report
+ */
+export const resolveReport = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { actionTaken, status: newStatus } = req.body;
+    
+    const report = await Report.findById(id);
+    
+    if (!report) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Report not found'
+      });
+    }
+    
+    report.status = newStatus || 'resolved';
+    report.reviewedBy = req.userId;
+    report.reviewedAt = new Date();
+    if (actionTaken) report.actionTaken = actionTaken;
+    
+    await report.save();
+    
+    // Create audit log
+    await AuditLog.create({
+      adminId: req.userId,
+      action: 'resolve_report',
+      targetType: 'report',
+      targetId: report._id,
+      details: { actionTaken, resourceType: report.resourceType, resourceId: report.resourceId }
+    });
+    
+    await logAdminAction(
+      req.userId,
+      'report_resolved',
+      id,
+      'Report',
+      { actionTaken }
+    );
+    
+    logger.info(`Report resolved: ${id} by ${req.user.email}`);
+    
+    res.json({
+      status: 'success',
+      message: 'Report resolved successfully',
+      data: { report }
+    });
+  } catch (error) {
+    logger.error('Resolve report error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to resolve report'
+    });
+  }
+};
+
+// Keep moderatePost for backward compatibility
+export const moderatePost = async (req, res) => {
+  const { status } = req.body;
+  if (status === 'approved') {
+    return approvePost(req, res);
+  } else if (status === 'declined') {
+    return declinePost(req, res);
+  } else {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Invalid status. Use approve or decline endpoints.'
     });
   }
 };
