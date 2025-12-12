@@ -121,9 +121,21 @@ export const uploadLocal = [
 /**
  * GET /api/v1/uploads/file/:path(*)
  * Serve uploaded files with proper CORS headers
+ * OPTIONS /api/v1/uploads/file/:path(*) - Handle preflight requests
  */
 export const serveFile = async (req, res) => {
   try {
+    // Handle OPTIONS preflight request
+    if (req.method === 'OPTIONS') {
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      res.setHeader('Access-Control-Allow-Origin', frontendUrl);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+      return res.status(204).end();
+    }
+
     // Get the file path from the request
     // The route is /api/v1/uploads/file/*, so req.params[0] contains everything after /file/
     const filePath = req.params[0] || req.path.replace('/api/v1/uploads/file/', '');
@@ -160,10 +172,15 @@ export const serveFile = async (req, res) => {
       });
     }
 
-    // Set CORS headers explicitly
-    res.setHeader('Access-Control-Allow-Origin', process.env.FRONTEND_URL || 'http://localhost:3000');
+    // Set comprehensive CORS headers explicitly
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    res.setHeader('Access-Control-Allow-Origin', frontendUrl);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
+    res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
     
     // Determine content type
     const ext = path.extname(filePath).toLowerCase();
@@ -173,6 +190,7 @@ export const serveFile = async (req, res) => {
       '.png': 'image/png',
       '.gif': 'image/gif',
       '.webp': 'image/webp',
+      '.svg': 'image/svg+xml',
       '.pdf': 'application/pdf',
       '.doc': 'application/msword',
       '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'

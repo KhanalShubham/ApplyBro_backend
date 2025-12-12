@@ -9,6 +9,8 @@ import * as scholarshipsController from './scholarships.controller.js';
 import * as postsController from './posts.controller.js';
 import * as adminController from './admin.controller.js';
 import * as uploadsController from './uploads.controller.js';
+import * as documentsController from './documents.controller.js';
+import * as matchingController from './matching.controller.js';
 
 const router = express.Router();
 
@@ -29,6 +31,7 @@ router.delete('/users/me/documents/:docId', authenticate, usersController.delete
 router.get('/scholarships', optionalAuth, scholarshipsController.getScholarships);
 router.get('/scholarships/popular', optionalAuth, scholarshipsController.getPopular);
 router.get('/scholarships/recommendations', authenticate, scholarshipsController.getRecommendationsEndpoint);
+router.get('/scholarships/match', authenticate, matchingController.matchUserScholarships);
 router.get('/scholarships/:id', optionalAuth, scholarshipsController.getScholarship);
 router.post('/scholarships/:id/bookmark', authenticate, scholarshipsController.toggleBookmark);
 
@@ -44,10 +47,19 @@ router.post('/posts', authenticate, postsController.createPost);
 router.post('/posts/:id/like', authenticate, postsController.toggleLike);
 router.post('/posts/:id/comments', authenticate, postsController.addComment);
 
+// ========== DOCUMENT ROUTES ==========
+router.post('/documents/upload', documentsController.uploadDocument);
+router.get('/documents/my-documents', authenticate, documentsController.getMyDocuments);
+router.get('/documents/:id', authenticate, documentsController.getDocument);
+router.delete('/documents/:id', authenticate, documentsController.deleteDocument);
+
 // ========== UPLOAD ROUTES ==========
 router.get('/uploads/presign', authenticate, uploadsController.getPresignedUrl);
 router.post('/uploads/local', uploadsController.uploadLocal);
-router.get('/uploads/file/*', uploadsController.serveFile); // Serve files with CORS headers
+// Serve uploaded files - must be after other upload routes
+// Handle both GET and OPTIONS for CORS preflight
+router.get('/uploads/file/*', uploadsController.serveFile);
+router.options('/uploads/file/*', uploadsController.serveFile);
 
 // ========== ADMIN ROUTES ==========
 // User management
@@ -56,8 +68,11 @@ router.put('/admin/users/:id/role', authenticate, requireAdmin, adminController.
 router.delete('/admin/users/:id', authenticate, requireAdmin, adminController.deleteUser);
 
 // Document verification
+router.get('/admin/documents/all', authenticate, requireAdmin, adminController.getAllDocuments);
 router.get('/admin/documents/pending', authenticate, requireAdmin, adminController.getPendingDocuments);
+// More specific route (with userId) must come first to avoid route conflicts
 router.put('/admin/documents/:userId/:docId/verify', authenticate, requireAdmin, adminController.verifyDocument);
+router.put('/admin/documents/:docId/verify', authenticate, requireAdmin, adminController.verifyDocument);
 
 // Post moderation
 router.get('/admin/posts/pending', authenticate, requireAdmin, adminController.getPendingPosts);

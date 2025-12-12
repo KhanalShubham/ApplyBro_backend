@@ -1,26 +1,26 @@
 ﻿import mongoose from "mongoose";
 
 const adminActionSchema = new mongoose.Schema(
-  {
-    admin: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
-    actionType: {
-      type: String,
-      required: true,
-      enum: [
-        'create-scholarship',
-        'update-scholarship',
-        'delete-scholarship',
-        'approve-post',
-        'decline-post',
-        'verify-document',
-        'reject-document',
-        'ban-user',
-        'unban-user',
-        'analytics-export',
+	{
+		admin: {
+			type: mongoose.Schema.Types.ObjectId,
+			ref: 'User',
+			required: true,
+		},
+		actionType: {
+			type: String,
+			required: true,
+			enum: [
+				'create-scholarship',
+				'update-scholarship',
+				'delete-scholarship',
+				'approve-post',
+				'decline-post',
+				'verify-document',
+				'reject-document',
+				'ban-user',
+				'unban-user',
+				'analytics-export',
         // Additional actions used across controllers
         'user_updated',
         'user_deleted',
@@ -28,31 +28,31 @@ const adminActionSchema = new mongoose.Schema(
         'post_declined',
         'document_verified',
         'document_rejected',
-      ],
-    },
-    targetType: {
-      type: String,
-      required: true,
-      enum: ['scholarship', 'post', 'user', 'document', 'system'],
-    },
-    targetId: {
-      type: mongoose.Schema.Types.ObjectId,
-    },
-    targetLabel: {
-      type: String,
-    },
-    details: {
+			],
+		},
+		targetType: {
+			type: String,
+			required: true,
+			enum: ['scholarship', 'post', 'user', 'document', 'system'],
+		},
+		targetId: {
+			type: mongoose.Schema.Types.ObjectId,
+		},
+		targetLabel: {
+			type: String,
+		},
+		details: {
       type: mongoose.Schema.Types.Mixed,
       default: {},
-    },
-    metadata: {
-      type: mongoose.Schema.Types.Mixed,
-      default: {},
-    },
-  },
-  {
-    timestamps: true,
-  }
+		},
+		metadata: {
+			type: mongoose.Schema.Types.Mixed,
+			default: {},
+		},
+	},
+	{
+		timestamps: true,
+	}
 );
 
 adminActionSchema.index({ actionType: 1, targetType: 1, createdAt: -1 });

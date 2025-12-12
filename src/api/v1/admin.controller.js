@@ -1,4 +1,5 @@
 import User from '../../models/user.model.js';
+import UserDocument from '../../models/userDocument.model.js';
 import Post from '../../models/post.model.js';
 import Scholarship from '../../models/scholarship.model.js';
 import College from '../../models/college.model.js';
@@ -179,8 +180,109 @@ export const deleteUser = async (req, res) => {
 // ========== DOCUMENT VERIFICATION ==========
 
 /**
+ * GET /api/v1/admin/documents/all
+ * Get all documents (pending, verified, rejected) for admin overview
+ */
+export const getAllDocuments = async (req, res) => {
+  try {
+    const { page = 1, pageSize = 20, status } = req.query;
+    
+    const skip = (parseInt(page) - 1) * parseInt(pageSize);
+    const limit = parseInt(pageSize);
+    
+    // Build query for UserDocument collection
+    const userDocQuery = status ? { status } : {};
+    const userDocuments = await UserDocument.find(userDocQuery)
+      .populate('userId', 'name email')
+      .sort({ uploadedAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+    
+    const totalUserDocs = await UserDocument.countDocuments(userDocQuery);
+    
+    // Get documents from User.documents array
+    const userQuery = status ? { 'documents.status': status } : {};
+    const users = await User.find(userQuery).select('name email documents');
+    
+    // Flatten documents with user info
+    const allDocs = [];
+    
+    // Add UserDocument collection documents
+    userDocuments.forEach(doc => {
+      if (doc.userId) {
+        allDocs.push({
+          docId: doc._id,
+          userId: doc.userId._id || doc.userId,
+          userName: doc.userId.name || 'Unknown',
+          userEmail: doc.userId.email || 'Unknown',
+          type: doc.documentType,
+          name: doc.originalFilename,
+          url: doc.fileUrl,
+          status: doc.status,
+          uploadedAt: doc.uploadedAt,
+          verifiedAt: doc.verifiedAt,
+          verifiedBy: doc.verifiedBy,
+          adminNote: doc.adminNote,
+          source: 'UserDocument',
+          documentType: doc.documentType,
+          educationType: doc.type,
+          fileSize: doc.fileSize,
+          mimeType: doc.mimeType,
+          parsingStatus: doc.parsingStatus
+        });
+      }
+    });
+    
+    // Add User.documents array documents
+    users.forEach(user => {
+      user.documents.forEach(doc => {
+        if (!status || doc.status === status) {
+          allDocs.push({
+            docId: doc._id,
+            userId: user._id,
+            userName: user.name,
+            userEmail: user.email,
+            type: doc.type,
+            name: doc.name,
+            url: doc.url,
+            status: doc.status,
+            uploadedAt: doc.uploadedAt,
+            verifiedAt: doc.verifiedAt,
+            adminNote: doc.adminNote,
+            source: 'User.documents'
+          });
+        }
+      });
+    });
+    
+    // Sort by upload date
+    allDocs.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
+    
+    res.json({
+      status: 'success',
+      data: {
+        documents: allDocs,
+        pagination: {
+          page: parseInt(page),
+          pageSize: parseInt(pageSize),
+          total: totalUserDocs + allDocs.length,
+          totalPages: Math.ceil((totalUserDocs + allDocs.length) / parseInt(pageSize))
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('Get all documents error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch documents'
+    });
+  }
+};
+
+/**
  * GET /api/v1/admin/documents/pending
- * Get pending documents
+ * Get pending documents from both UserDocument collection and User.documents array
  */
 export const getPendingDocuments = async (req, res) => {
   try {
@@ -189,12 +291,45 @@ export const getPendingDocuments = async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(pageSize);
     const limit = parseInt(pageSize);
     
+    // Get pending documents from UserDocument collection
+    const userDocuments = await UserDocument.find({
+      status: 'pending'
+    })
+    .populate('userId', 'name email')
+    .sort({ uploadedAt: -1 })
+    .lean();
+    
+    // Get pending documents from User.documents array
     const users = await User.find({
       'documents.status': 'pending'
     }).select('name email documents');
     
     // Flatten documents with user info
     const pendingDocs = [];
+    
+    // Add UserDocument collection documents
+    userDocuments.forEach(doc => {
+      if (doc.userId) {
+        pendingDocs.push({
+          docId: doc._id,
+          userId: doc.userId._id || doc.userId,
+          userName: doc.userId.name || 'Unknown',
+          userEmail: doc.userId.email || 'Unknown',
+          type: doc.documentType,
+          name: doc.originalFilename,
+          url: doc.fileUrl,
+          uploadedAt: doc.uploadedAt,
+          source: 'UserDocument', // Flag to identify source
+          documentType: doc.documentType,
+          educationType: doc.type, // Education level type (+2, bachelor, etc.)
+          fileSize: doc.fileSize,
+          mimeType: doc.mimeType,
+          parsingStatus: doc.parsingStatus
+        });
+      }
+    });
+    
+    // Add User.documents array documents
     users.forEach(user => {
       user.documents.forEach(doc => {
         if (doc.status === 'pending') {
@@ -206,14 +341,15 @@ export const getPendingDocuments = async (req, res) => {
             type: doc.type,
             name: doc.name,
             url: doc.url,
-            uploadedAt: doc.uploadedAt
+            uploadedAt: doc.uploadedAt,
+            source: 'User.documents' // Flag to identify source
           });
         }
       });
     });
     
     // Sort by upload date
-    pendingDocs.sort((a, b) => b.uploadedAt - a.uploadedAt);
+    pendingDocs.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
     
     const paginated = pendingDocs.slice(skip, skip + limit);
     
@@ -240,12 +376,14 @@ export const getPendingDocuments = async (req, res) => {
 
 /**
  * PUT /api/v1/admin/documents/:userId/:docId/verify
- * Verify or reject a document
+ * Verify or reject a document (handles both UserDocument and User.documents)
+ * Also supports PUT /api/v1/admin/documents/:docId/verify for UserDocument collection
  */
 export const verifyDocument = async (req, res) => {
   try {
-    const { userId, docId } = req.params;
-    const { status, adminNote } = req.body;
+    // Support both routes: /:userId/:docId/verify and /:docId/verify
+    const { userId: userIdParam, docId } = req.params;
+    const { status, adminNote, userId: userIdBody } = req.body;
     
     if (!['verified', 'rejected'].includes(status)) {
       return res.status(400).json({
@@ -254,44 +392,111 @@ export const verifyDocument = async (req, res) => {
       });
     }
     
-    const user = await User.findById(userId);
+    let userId = userIdParam || userIdBody;
+    let verifiedDoc = null;
+    let docType = null;
+    let user = null;
     
-    if (!user) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'User not found'
+    // Try to find in UserDocument collection first (works with or without userId)
+    const userDocumentQuery = userId 
+      ? { _id: docId, userId: userId }
+      : { _id: docId };
+    
+    const userDocument = await UserDocument.findOne(userDocumentQuery)
+      .populate('userId', 'name email');
+    
+    if (userDocument) {
+      userId = userDocument.userId._id || userDocument.userId;
+      user = await User.findById(userId);
+      
+      if (!user) {
+        return res.status(404).json({
+          status: 'error',
+          message: 'User not found'
+        });
+      }
+      
+      // Update UserDocument
+      userDocument.status = status;
+      userDocument.verifiedAt = new Date();
+      userDocument.verifiedBy = req.userId;
+      if (adminNote) userDocument.adminNote = adminNote;
+      await userDocument.save();
+      
+      verifiedDoc = userDocument;
+      docType = userDocument.documentType;
+      
+      // Also sync to User.documents array if it exists
+      const userDocInArray = user.documents.find(
+        doc => doc.url === userDocument.fileUrl
+      );
+      if (userDocInArray) {
+        userDocInArray.status = status;
+        userDocInArray.verifiedAt = new Date();
+        if (adminNote) userDocInArray.adminNote = adminNote;
+        await user.save();
+      }
+    } else if (userId) {
+      // Try to find in User.documents array
+      user = await User.findById(userId);
+      
+      if (!user) {
+        return res.status(404).json({
+          status: 'error',
+          message: 'User not found'
+        });
+      }
+      
+      const doc = user.documents.id(docId);
+      
+      if (!doc) {
+        return res.status(404).json({
+          status: 'error',
+          message: 'Document not found'
+        });
+      }
+      
+      doc.status = status;
+      doc.verifiedAt = new Date();
+      if (adminNote) doc.adminNote = adminNote;
+      await user.save();
+      
+      verifiedDoc = doc;
+      docType = doc.type;
+      
+      // Also sync to UserDocument if it exists
+      const userDocumentByUrl = await UserDocument.findOne({
+        userId: userId,
+        fileUrl: doc.url
       });
-    }
-    
-    const doc = user.documents.id(docId);
-    
-    if (!doc) {
+      if (userDocumentByUrl) {
+        userDocumentByUrl.status = status;
+        userDocumentByUrl.verifiedAt = new Date();
+        userDocumentByUrl.verifiedBy = req.userId;
+        if (adminNote) userDocumentByUrl.adminNote = adminNote;
+        await userDocumentByUrl.save();
+      }
+    } else {
       return res.status(404).json({
         status: 'error',
         message: 'Document not found'
       });
     }
     
-    doc.status = status;
-    doc.verifiedAt = new Date();
-    if (adminNote) doc.adminNote = adminNote;
-    
-    await user.save();
-    
     await logAdminAction(
       req.userId,
-    status === 'verified' ? 'document_verified' : 'document_rejected',
+      status === 'verified' ? 'document_verified' : 'document_rejected',
       docId,
       'Document',
-      { userId, type: doc.type }
+      { userId, type: docType }
     );
     
-    logger.info(`Document ${status}: ${doc.name} for user ${user.email} by ${req.user.email}`);
+    logger.info(`Document ${status}: ${verifiedDoc.name || verifiedDoc.originalFilename} for user ${user.email} by ${req.user.email}`);
     
     res.json({
       status: 'success',
       message: `Document ${status} successfully`,
-      data: { document: doc }
+      data: { document: verifiedDoc }
     });
   } catch (error) {
     logger.error('Verify document error:', error);
