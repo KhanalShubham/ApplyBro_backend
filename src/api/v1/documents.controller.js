@@ -155,13 +155,47 @@ export const getMyDocuments = async (req, res) => {
   try {
     const documents = await UserDocument.find({
       userId: req.userId
-    }).sort({ uploadedAt: -1 });
+    }).sort({ uploadedAt: -1 }).lean();
+    
+    // Transform documents to match frontend expectations
+    const transformedDocuments = documents.map(doc => {
+      // Map backend type values to frontend DocumentType format
+      const typeMap = {
+        '+2': '+2',
+        'bachelor': 'Bachelor',
+        'ielts': 'IELTS',
+        'master': 'Master',
+        'phd': 'PhD',
+        'other': 'Other'
+      };
+      
+      return {
+        _id: doc._id,
+        userId: doc.userId,
+        type: typeMap[doc.type] || doc.type, // Map to frontend DocumentType format
+        fileName: doc.originalFilename,
+        originalName: doc.originalFilename,
+        filePath: doc.filePath,
+        url: doc.fileUrl,
+        fileSize: doc.fileSize,
+        mimeType: doc.mimeType,
+        status: doc.parsingStatus || 'pending', // Parsing status
+        verificationStatus: doc.status, // Verification status: 'pending', 'verified', 'rejected'
+        parsedData: doc.parsedData,
+        parsingError: doc.parsingError,
+        note: doc.adminNote, // Admin note if any
+        uploadedAt: doc.uploadedAt,
+        updatedAt: doc.parsedAt || doc.uploadedAt,
+        rejectionReason: doc.status === 'rejected' ? doc.adminNote : undefined,
+        adminNote: doc.adminNote
+      };
+    });
     
     res.json({
       status: 'success',
       data: {
-        documents,
-        count: documents.length
+        documents: transformedDocuments,
+        count: transformedDocuments.length
       }
     });
   } catch (error) {

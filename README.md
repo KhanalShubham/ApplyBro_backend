@@ -52,6 +52,49 @@ Complete backend API for the ApplyBro scholarship platform built with Node.js, E
   - Input validation with Joi
   - Error handling middleware
 
+## 📄 Document Verification System
+
+The document verification system provides a complete workflow for users to upload academic documents and admins to verify them.
+
+### Workflow Overview
+
+1. **User Uploads Document**
+   - User uploads a document via `POST /documents/upload`
+   - Document is automatically set to `status: 'pending'`
+   - Document is stored in both `UserDocument` collection and `User.documents` array
+   - Document parsing happens asynchronously in the background
+   - Document immediately appears in admin panel
+
+2. **Admin Views Pending Documents**
+   - Admin can view pending documents via `GET /admin/documents/pending`
+   - Admin can view all documents with status filter via `GET /admin/documents/all?status=pending`
+   - Both endpoints include document metadata (file size, MIME type, parsing status, etc.)
+
+3. **Admin Accesses Document File**
+   - Document files are accessible via:
+     - Direct static serving: `/uploads/document/userId/filename.pdf` (with CORS headers)
+     - API route: `/api/v1/uploads/file/document/userId/filename.pdf` (with CORS headers)
+   - Both routes include proper CORS headers for cross-origin access
+
+4. **Admin Verifies Document**
+   - Admin verifies/rejects document via:
+     - `PUT /api/v1/admin/documents/:docId/verify` (for UserDocument collection)
+     - `PUT /api/v1/admin/documents/:userId/:docId/verify` (for User.documents array)
+   - Status is synced between both systems automatically
+   - Admin action is logged in audit trail
+
+5. **User Sees Status**
+   - User can view document status via `GET /documents/my-documents`
+   - Status is synced and visible to the user immediately
+
+### Key Features
+
+- **Dual Storage System**: Documents are stored in both `UserDocument` collection (for advanced features) and `User.documents` array (for backward compatibility)
+- **Automatic Status Sync**: When a document is verified/rejected, the status is automatically synced between both storage systems
+- **CORS Support**: Document files are accessible with proper CORS headers for frontend access
+- **Metadata Rich**: Documents include file size, MIME type, parsing status, verification status, and admin notes
+- **Audit Trail**: All admin actions are logged for accountability
+
 ## 📋 Prerequisites
 
 - Node.js 18+ and npm
@@ -240,6 +283,69 @@ Add document to user profile (requires authentication)
 #### DELETE `/users/me/documents/:docId`
 Delete a document (requires authentication)
 
+### Document Endpoints
+
+#### POST `/documents/upload`
+Upload a document with automatic parsing (requires authentication)
+
+**Form Data:**
+- `file` - Document file (PDF, DOC, DOCX)
+- `type` - Education level type (e.g., "+2", "bachelor", "ielts", "master")
+- `documentType` - Document type (e.g., "transcript", "certificate", "ielts")
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Document uploaded successfully. Parsing in progress. Document is pending admin verification.",
+  "data": {
+    "document": {
+      "id": "507f1f77bcf86cd799439011",
+      "type": "bachelor",
+      "documentType": "transcript",
+      "originalFilename": "transcript.pdf",
+      "fileUrl": "/uploads/document/userId/transcript.pdf",
+      "parsingStatus": "processing",
+      "verificationStatus": "pending",
+      "uploadedAt": "2024-01-15T10:30:00Z"
+    }
+  }
+}
+```
+
+**Notes:**
+- Documents are automatically set to `status: 'pending'` upon upload
+- Document parsing happens asynchronously in the background
+- Documents are immediately visible to admins for verification
+- Document is stored in both `UserDocument` collection and `User.documents` array for backward compatibility
+
+#### GET `/documents/my-documents`
+Get all documents uploaded by the current user (requires authentication)
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "documents": [
+      {
+        "id": "507f1f77bcf86cd799439011",
+        "type": "bachelor",
+        "documentType": "transcript",
+        "originalFilename": "transcript.pdf",
+        "fileUrl": "/uploads/document/userId/transcript.pdf",
+        "fileSize": 1024000,
+        "mimeType": "application/pdf",
+        "parsingStatus": "completed",
+        "status": "verified",
+        "verifiedAt": "2024-01-16T09:00:00Z",
+        "uploadedAt": "2024-01-15T10:30:00Z"
+      }
+    ]
+  }
+}
+```
+
 ### Post Endpoints
 
 #### GET `/posts`
@@ -310,8 +416,106 @@ Local file upload (development fallback)
 - `DELETE /admin/users/:id` - Delete user
 
 #### Document Verification
-- `GET /admin/documents/pending` - Get pending documents
-- `PUT /admin/documents/:userId/:docId/verify` - Verify/reject document
+
+##### GET `/admin/documents/pending`
+Get all pending documents from both `UserDocument` collection and `User.documents` array
+
+**Query Parameters:**
+- `page` - Page number (default: 1)
+- `pageSize` - Items per page (default: 20)
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "documents": [
+      {
+        "docId": "507f1f77bcf86cd799439011",
+        "userId": "507f191e810c19729de860ea",
+        "userName": "John Doe",
+        "userEmail": "john@example.com",
+        "type": "transcript",
+        "name": "transcript.pdf",
+        "url": "/uploads/document/userId/transcript.pdf",
+        "uploadedAt": "2024-01-15T10:30:00Z",
+        "source": "UserDocument",
+        "documentType": "transcript",
+        "educationType": "bachelor",
+        "fileSize": 1024000,
+        "mimeType": "application/pdf",
+        "parsingStatus": "completed"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "pageSize": 20,
+      "total": 5,
+      "totalPages": 1
+    }
+  }
+}
+```
+
+##### GET `/admin/documents/all`
+Get all documents (pending, verified, rejected) with optional status filter
+
+**Query Parameters:**
+- `page` - Page number (default: 1)
+- `pageSize` - Items per page (default: 20)
+- `status` - Filter by status: `pending`, `verified`, or `rejected` (optional)
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "documents": [
+      {
+        "docId": "507f1f77bcf86cd799439011",
+        "userId": "507f191e810c19729de860ea",
+        "userName": "John Doe",
+        "userEmail": "john@example.com",
+        "type": "transcript",
+        "name": "transcript.pdf",
+        "url": "/uploads/document/userId/transcript.pdf",
+        "status": "verified",
+        "uploadedAt": "2024-01-15T10:30:00Z",
+        "verifiedAt": "2024-01-16T09:00:00Z",
+        "verifiedBy": "507f191e810c19729de860eb",
+        "adminNote": "Document verified successfully",
+        "source": "UserDocument",
+        "documentType": "transcript",
+        "educationType": "bachelor",
+        "fileSize": 1024000,
+        "mimeType": "application/pdf",
+        "parsingStatus": "completed"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "pageSize": 20,
+      "total": 25,
+      "totalPages": 2
+    }
+  }
+}
+```
+
+##### PUT `/admin/documents/:docId/verify`
+Verify or reject a document from the `UserDocument` collection
+
+**Request Body:**
+```json
+{
+  "status": "verified", // or "rejected"
+  "adminNote": "Document verified successfully", // optional
+  "userId": "507f191e810c19729de860ea" // optional, for UserDocument lookup
+}
+```
+
+##### PUT `/admin/documents/:userId/:docId/verify`
+Verify or reject a document from the `User.documents` array
 
 **Request Body:**
 ```json
@@ -320,6 +524,30 @@ Local file upload (development fallback)
   "adminNote": "Document verified successfully" // optional
 }
 ```
+
+**Response (both endpoints):**
+```json
+{
+  "status": "success",
+  "message": "Document verified successfully",
+  "data": {
+    "document": {
+      "id": "507f1f77bcf86cd799439011",
+      "status": "verified",
+      "verifiedAt": "2024-01-16T09:00:00Z",
+      "verifiedBy": "507f191e810c19729de860eb",
+      "adminNote": "Document verified successfully"
+    }
+  }
+}
+```
+
+**Notes:**
+- Both verification endpoints sync the status between `UserDocument` collection and `User.documents` array
+- Admin actions are logged in the audit trail
+- Document files are accessible via:
+  - Direct static serving: `/uploads/document/userId/filename.pdf` (with CORS headers)
+  - API route: `/api/v1/uploads/file/document/userId/filename.pdf` (with CORS headers)
 
 #### Post Moderation
 - `GET /admin/posts/pending` - Get pending posts

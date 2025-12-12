@@ -185,14 +185,78 @@ export const deleteUser = async (req, res) => {
  */
 export const getAllDocuments = async (req, res) => {
   try {
-    const { page = 1, pageSize = 20, status } = req.query;
+    const { page = 1, pageSize = 20, status, search } = req.query;
     
     const skip = (parseInt(page) - 1) * parseInt(pageSize);
     const limit = parseInt(pageSize);
     
-    // Build query for UserDocument collection
+    // Build query for UserDocument collection (primary source)
     const userDocQuery = status ? { status } : {};
-    const userDocuments = await UserDocument.find(userDocQuery)
+    
+    // Add search functionality if provided
+    let userDocuments;
+    if (search) {
+      // Search by filename or user name/email
+      userDocuments = await UserDocument.find(userDocQuery)
+        .populate({
+          path: 'userId',
+          select: 'name email',
+          match: {
+            $or: [
+              { name: { $regex: search, $options: 'i' } },
+              { email: { $regex: search, $options: 'i' } }
+            ]
+          }
+        })
+        .sort({ uploadedAt: -1 })
+        .lean();
+      
+      // Filter by search term in filename
+      userDocuments = userDocuments.filter(doc => 
+        doc.originalFilename?.toLowerCase().includes(search.toLowerCase()) ||
+        (doc.userId && (doc.userId.name || doc.userId.email))
+      );
+      
+      // Apply pagination after filtering
+      const total = userDocuments.length;
+      userDocuments = userDocuments.slice(skip, skip + limit);
+      
+      res.json({
+        status: 'success',
+        data: {
+          documents: userDocuments.map(doc => ({
+            docId: doc._id,
+            userId: doc.userId?._id || doc.userId || null,
+            userName: doc.userId?.name || 'Unknown',
+            userEmail: doc.userId?.email || 'Unknown',
+            type: doc.documentType,
+            name: doc.originalFilename,
+            url: doc.fileUrl,
+            status: doc.status,
+            uploadedAt: doc.uploadedAt,
+            verifiedAt: doc.verifiedAt,
+            verifiedBy: doc.verifiedBy,
+            adminNote: doc.adminNote,
+            source: 'UserDocument',
+            documentType: doc.documentType,
+            educationType: doc.type,
+            fileSize: doc.fileSize,
+            mimeType: doc.mimeType,
+            parsingStatus: doc.parsingStatus
+          })),
+          pagination: {
+            page: parseInt(page),
+            pageSize: parseInt(pageSize),
+            total: total,
+            totalPages: Math.ceil(total / parseInt(pageSize))
+          }
+        }
+      });
+      return;
+    }
+    
+    // Normal query without search
+    userDocuments = await UserDocument.find(userDocQuery)
       .populate('userId', 'name email')
       .sort({ uploadedAt: -1 })
       .skip(skip)
@@ -201,63 +265,28 @@ export const getAllDocuments = async (req, res) => {
     
     const totalUserDocs = await UserDocument.countDocuments(userDocQuery);
     
-    // Get documents from User.documents array
-    const userQuery = status ? { 'documents.status': status } : {};
-    const users = await User.find(userQuery).select('name email documents');
-    
-    // Flatten documents with user info
-    const allDocs = [];
-    
-    // Add UserDocument collection documents
-    userDocuments.forEach(doc => {
-      if (doc.userId) {
-        allDocs.push({
-          docId: doc._id,
-          userId: doc.userId._id || doc.userId,
-          userName: doc.userId.name || 'Unknown',
-          userEmail: doc.userId.email || 'Unknown',
-          type: doc.documentType,
-          name: doc.originalFilename,
-          url: doc.fileUrl,
-          status: doc.status,
-          uploadedAt: doc.uploadedAt,
-          verifiedAt: doc.verifiedAt,
-          verifiedBy: doc.verifiedBy,
-          adminNote: doc.adminNote,
-          source: 'UserDocument',
-          documentType: doc.documentType,
-          educationType: doc.type,
-          fileSize: doc.fileSize,
-          mimeType: doc.mimeType,
-          parsingStatus: doc.parsingStatus
-        });
-      }
-    });
-    
-    // Add User.documents array documents
-    users.forEach(user => {
-      user.documents.forEach(doc => {
-        if (!status || doc.status === status) {
-          allDocs.push({
-            docId: doc._id,
-            userId: user._id,
-            userName: user.name,
-            userEmail: user.email,
-            type: doc.type,
-            name: doc.name,
-            url: doc.url,
-            status: doc.status,
-            uploadedAt: doc.uploadedAt,
-            verifiedAt: doc.verifiedAt,
-            adminNote: doc.adminNote,
-            source: 'User.documents'
-          });
-        }
-      });
-    });
-    
-    // Sort by upload date
-    allDocs.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
+    // Only return documents from UserDocument collection (primary source)
+    // This avoids duplicates from User.documents array
+    const allDocs = userDocuments.map(doc => ({
+      docId: doc._id,
+      userId: doc.userId?._id || doc.userId || null,
+      userName: doc.userId?.name || 'Unknown',
+      userEmail: doc.userId?.email || 'Unknown',
+      type: doc.documentType,
+      name: doc.originalFilename,
+      url: doc.fileUrl,
+      status: doc.status,
+      uploadedAt: doc.uploadedAt,
+      verifiedAt: doc.verifiedAt,
+      verifiedBy: doc.verifiedBy,
+      adminNote: doc.adminNote,
+      source: 'UserDocument',
+      documentType: doc.documentType,
+      educationType: doc.type,
+      fileSize: doc.fileSize,
+      mimeType: doc.mimeType,
+      parsingStatus: doc.parsingStatus
+    }));
     
     res.json({
       status: 'success',
@@ -266,8 +295,8 @@ export const getAllDocuments = async (req, res) => {
         pagination: {
           page: parseInt(page),
           pageSize: parseInt(pageSize),
-          total: totalUserDocs + allDocs.length,
-          totalPages: Math.ceil((totalUserDocs + allDocs.length) / parseInt(pageSize))
+          total: totalUserDocs,
+          totalPages: Math.ceil(totalUserDocs / parseInt(pageSize))
         }
       }
     });
