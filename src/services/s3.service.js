@@ -26,15 +26,19 @@ if (process.env.S3_ACCESS_KEY && process.env.S3_SECRET_KEY) {
 const ALLOWED_TYPES = {
   document: {
     extensions: ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png'],
-    maxSize: 5 * 1024 * 1024 // 5MB
+    maxSize: 20 * 1024 * 1024 // 20MB
+  },
+  video: {
+    extensions: ['.mp4', '.webm', '.mkv', '.mov'],
+    maxSize: 500 * 1024 * 1024 // 500MB
   },
   image: {
     extensions: ['.jpg', '.jpeg', '.png', '.gif', '.webp'],
-    maxSize: 2 * 1024 * 1024 // 2MB
+    maxSize: 5 * 1024 * 1024 // 5MB
   },
   profile: {
     extensions: ['.jpg', '.jpeg', '.png'],
-    maxSize: 2 * 1024 * 1024 // 2MB
+    maxSize: 5 * 1024 * 1024 // 5MB
   }
 };
 
@@ -44,15 +48,15 @@ const ALLOWED_TYPES = {
 export const validateFileType = (filename, type) => {
   const ext = path.extname(filename).toLowerCase();
   const config = ALLOWED_TYPES[type];
-  
+
   if (!config) {
     throw new Error(`Invalid file type: ${type}`);
   }
-  
+
   if (!config.extensions.includes(ext)) {
     throw new Error(`File extension ${ext} not allowed for type ${type}`);
   }
-  
+
   return { ext, config };
 };
 
@@ -61,24 +65,24 @@ export const validateFileType = (filename, type) => {
  */
 export const generatePresignedUploadUrl = async (filename, type, userId) => {
   validateFileType(filename, type);
-  
+
   if (!s3Client) {
     throw new Error('S3 client not configured. Check your AWS credentials.');
   }
-  
+
   const ext = path.extname(filename).toLowerCase();
   const key = `${type}/${userId}/${crypto.randomUUID()}${ext}`;
-  
+
   const command = new PutObjectCommand({
     Bucket: S3_BUCKET,
     Key: key,
     ContentType: getContentType(ext)
   });
-  
+
   try {
     const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 }); // 1 hour
     const publicUrl = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${key}`;
-    
+
     return {
       uploadUrl,
       publicUrl,
@@ -103,13 +107,13 @@ export const getPublicUrl = (key) => {
  */
 export const deleteFileFromS3 = async (key) => {
   if (!s3Client || !key) return;
-  
+
   try {
     const command = new DeleteObjectCommand({
       Bucket: S3_BUCKET,
       Key: key
     });
-    
+
     await s3Client.send(command);
     logger.info(`File deleted from S3: ${key}`);
   } catch (error) {
@@ -123,19 +127,25 @@ export const deleteFileFromS3 = async (key) => {
  */
 export const saveFileLocally = async (file, filename, type, userId) => {
   const { ext, config } = validateFileType(filename, type);
-  
+
   // Create directories if they don't exist
   const uploadDir = `uploads/${type}/${userId}`;
   await fs.mkdir(uploadDir, { recursive: true });
-  
+
   const uniqueFilename = `${crypto.randomUUID()}${ext}`;
   const filePath = path.join(uploadDir, uniqueFilename);
-  
+
   // Save file
   await fs.writeFile(filePath, file);
-  
-  const publicUrl = `/${filePath.replace(/\\/g, '/')}`;
-  
+
+  // The filePath is "uploads/type/userId/filename"
+  // The serve endpoint expects path after "uploads/"
+  // So we strip "uploads/" from the start
+  const relativePath = filePath.replace(/^uploads[\\/]/, '').replace(/\\/g, '/');
+
+  // Construct the API URL that matches the route in uploads.controller.js
+  const publicUrl = `/api/v1/uploads/file/${relativePath}`;
+
   return {
     uploadUrl: null, // Not needed for local
     publicUrl,
@@ -151,7 +161,7 @@ export const getPresignedUploadUrl = async (filename, type, userId) => {
     // Return local upload endpoint info
     const { ext } = validateFileType(filename, type);
     const key = `${type}/${userId}/${crypto.randomUUID()}${ext}`;
-    
+
     return {
       uploadUrl: `/api/v1/uploads/local`,
       publicUrl: null,
@@ -159,7 +169,7 @@ export const getPresignedUploadUrl = async (filename, type, userId) => {
       local: true
     };
   }
-  
+
   return await generatePresignedUploadUrl(filename, type, userId);
 };
 
@@ -175,9 +185,13 @@ const getContentType = (ext) => {
     '.jpeg': 'image/jpeg',
     '.png': 'image/png',
     '.gif': 'image/gif',
-    '.webp': 'image/webp'
+    '.webp': 'image/webp',
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.mkv': 'video/x-matroska',
+    '.mov': 'video/quicktime'
   };
-  
+
   return contentTypes[ext.toLowerCase()] || 'application/octet-stream';
 };
 

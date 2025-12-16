@@ -12,6 +12,8 @@ import * as adminController from './admin.controller.js';
 import * as uploadsController from './uploads.controller.js';
 import * as documentsController from './documents.controller.js';
 import * as matchingController from './matching.controller.js';
+import savedItemsRoutes from './savedItems.routes.js';
+import guidanceRoutes from './guidance.routes.js';
 
 const router = express.Router();
 
@@ -103,5 +105,15 @@ router.post('/admin/reports/:id/resolve', authenticate, requireAdmin, adminContr
 // Analytics
 router.get('/admin/analytics', authenticate, requireAdmin, adminController.getAnalytics);
 router.get('/admin/actions', authenticate, requireAdmin, adminController.getAdminActions);
+
+// ========== SAVED ITEMS ROUTES ==========
+router.use('/saved', savedItemsRoutes);
+
+// ========== GUIDANCE ROUTES ==========
+router.use('/guidance', guidanceRoutes);
+
+// ========== CALENDAR ROUTES ==========
+import calendarRoutes from './calendar.routes.js';
+router.use('/calendar', calendarRoutes);
 
 export default router;
