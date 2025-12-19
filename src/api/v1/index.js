@@ -36,8 +36,10 @@ router.delete('/users/me', authenticate, usersController.deleteCurrentUser);
 router.get('/scholarships', optionalAuth, scholarshipsController.getScholarships);
 router.get('/scholarships/popular', optionalAuth, scholarshipsController.getPopular);
 router.get('/scholarships/recommendations', authenticate, scholarshipsController.getRecommendationsEndpoint);
+router.get('/scholarships/recommendations/enhanced', authenticate, scholarshipsController.getEnhancedRecommendationsEndpoint);
 router.get('/scholarships/match', authenticate, matchingController.matchUserScholarships);
 router.get('/scholarships/:id', optionalAuth, scholarshipsController.getScholarship);
+router.get('/scholarships/:id/match-explanation', authenticate, scholarshipsController.getMatchExplanationEndpoint);
 router.post('/scholarships/:id/bookmark', authenticate, scholarshipsController.toggleBookmark);
 
 // Admin scholarship routes

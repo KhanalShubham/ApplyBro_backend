@@ -1,7 +1,7 @@
 import Scholarship from '../../models/scholarship.model.js';
 import User from '../../models/user.model.js';
 import AdminAction from '../../models/adminAction.model.js';
-import { getRecommendations, getPopularScholarships } from '../../services/recommendation.service.js';
+import { getRecommendations, getPopularScholarships, getEnhancedRecommendations, getMatchExplanation } from '../../services/recommendation.service.js';
 import { authenticate, optionalAuth } from '../../middlewares/auth.middleware.js';
 import { requireAdmin } from '../../middlewares/auth.middleware.js';
 import { validate, schemas } from '../../middlewares/validate.middleware.js';
@@ -26,15 +26,15 @@ export const getScholarships = async (req, res) => {
       sort = 'deadline',
       order = 'asc'
     } = req.query;
-    
+
     // Build query
     const query = {};
-    
+
     // Text search
     if (q) {
       query.$text = { $search: q };
     }
-    
+
     // Filters
     if (country) query.country = country;
     if (level) query.level = level;
@@ -45,7 +45,7 @@ export const getScholarships = async (req, res) => {
     if (deadlineBefore) {
       query.deadline = { $lte: new Date(deadlineBefore) };
     }
-    
+
     // Default: only show open/upcoming verified scholarships
     if (!status) {
       query.status = { $in: ['open', 'upcoming'] };
@@ -58,11 +58,11 @@ export const getScholarships = async (req, res) => {
       const adminIds = await User.find({ role: 'admin' }).distinct('_id');
       query.createdBy = { $in: adminIds };
     }
-    
+
     // Pagination
     const skip = (parseInt(page) - 1) * parseInt(pageSize);
     const limit = parseInt(pageSize);
-    
+
     // Sort options
     const sortOptions = {};
     if (sort === 'deadline') {
@@ -72,12 +72,12 @@ export const getScholarships = async (req, res) => {
     } else {
       sortOptions.createdAt = order === 'asc' ? 1 : -1;
     }
-    
+
     // If text search, add text score to sort
     if (q) {
       sortOptions.score = { $meta: 'textScore' };
     }
-    
+
     // Execute query
     const [scholarships, total] = await Promise.all([
       Scholarship.find(query)
@@ -88,7 +88,7 @@ export const getScholarships = async (req, res) => {
         .lean(),
       Scholarship.countDocuments(query)
     ]);
-    
+
     res.json({
       status: 'success',
       data: {
@@ -117,18 +117,18 @@ export const getScholarships = async (req, res) => {
 export const getScholarship = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const scholarship = await Scholarship.findById(id)
       .populate('college', 'name country city description website logo')
       .populate('createdBy', 'name email');
-    
+
     if (!scholarship) {
       return res.status(404).json({
         status: 'error',
         message: 'Scholarship not found'
       });
     }
-    
+
     // Check if user has bookmarked this scholarship
     let isBookmarked = false;
     if (req.userId) {
@@ -137,7 +137,7 @@ export const getScholarship = async (req, res) => {
         bookmark => bookmark.toString() === id
       ) || false;
     }
-    
+
     res.json({
       status: 'success',
       data: {
@@ -167,11 +167,11 @@ export const createScholarship = async (req, res) => {
       createdBy: req.userId,
       verified: req.user.role === 'admin' // Auto-verify if created by admin
     };
-    
+
     const scholarship = await Scholarship.create(scholarshipData);
-    
+
     await scholarship.populate('college', 'name country');
-    
+
     // Audit: admin created scholarship
     if (req.user?.role === 'admin') {
       try {
@@ -187,9 +187,9 @@ export const createScholarship = async (req, res) => {
         logger.warn('Audit log failed (create-scholarship)', { error: auditErr.message });
       }
     }
-    
+
     logger.info(`Scholarship created: ${scholarship.title} by ${req.user.email}`);
-    
+
     res.status(201).json({
       status: 'success',
       message: 'Scholarship created successfully',
@@ -211,20 +211,20 @@ export const createScholarship = async (req, res) => {
 export const updateScholarship = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const scholarship = await Scholarship.findByIdAndUpdate(
       id,
       req.body,
       { new: true, runValidators: true }
     ).populate('college', 'name country');
-    
+
     if (!scholarship) {
       return res.status(404).json({
         status: 'error',
         message: 'Scholarship not found'
       });
     }
-    
+
     // Audit: admin updated scholarship
     if (req.user?.role === 'admin') {
       try {
@@ -240,9 +240,9 @@ export const updateScholarship = async (req, res) => {
         logger.warn('Audit log failed (update-scholarship)', { error: auditErr.message });
       }
     }
-    
+
     logger.info(`Scholarship updated: ${scholarship.title} by ${req.user.email}`);
-    
+
     res.json({
       status: 'success',
       message: 'Scholarship updated successfully',
@@ -264,22 +264,22 @@ export const updateScholarship = async (req, res) => {
 export const deleteScholarship = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const scholarship = await Scholarship.findByIdAndDelete(id);
-    
+
     if (!scholarship) {
       return res.status(404).json({
         status: 'error',
         message: 'Scholarship not found'
       });
     }
-    
+
     // Remove from all users' bookmarks
     await User.updateMany(
       { bookmarks: id },
       { $pull: { bookmarks: id } }
     );
-    
+
     // Audit: admin deleted scholarship
     if (req.user?.role === 'admin') {
       try {
@@ -295,9 +295,9 @@ export const deleteScholarship = async (req, res) => {
         logger.warn('Audit log failed (delete-scholarship)', { error: auditErr.message });
       }
     }
-    
+
     logger.info(`Scholarship deleted: ${scholarship.title} by ${req.user.email}`);
-    
+
     res.json({
       status: 'success',
       message: 'Scholarship deleted successfully'
@@ -319,21 +319,21 @@ export const toggleBookmark = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.userId;
-    
+
     const user = await User.findById(userId);
     const scholarship = await Scholarship.findById(id);
-    
+
     if (!scholarship) {
       return res.status(404).json({
         status: 'error',
         message: 'Scholarship not found'
       });
     }
-    
+
     const bookmarkIndex = user.bookmarks.findIndex(
       bookmark => bookmark.toString() === id
     );
-    
+
     let isBookmarked;
     if (bookmarkIndex === -1) {
       // Add bookmark
@@ -344,9 +344,9 @@ export const toggleBookmark = async (req, res) => {
       user.bookmarks.splice(bookmarkIndex, 1);
       isBookmarked = false;
     }
-    
+
     await user.save();
-    
+
     res.json({
       status: 'success',
       message: isBookmarked ? 'Scholarship bookmarked' : 'Bookmark removed',
@@ -368,18 +368,18 @@ export const toggleBookmark = async (req, res) => {
 export const getRecommendationsEndpoint = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
-    
+
     const user = await User.findById(req.userId);
-    
+
     if (!user) {
       return res.status(404).json({
         status: 'error',
         message: 'User not found'
       });
     }
-    
+
     const recommendations = await getRecommendations(user, limit);
-    
+
     res.json({
       status: 'success',
       data: { scholarships: recommendations }
@@ -400,9 +400,9 @@ export const getRecommendationsEndpoint = async (req, res) => {
 export const getPopular = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
-    
+
     const popular = await getPopularScholarships(limit);
-    
+
     res.json({
       status: 'success',
       data: { scholarships: popular }
@@ -416,8 +416,58 @@ export const getPopular = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/v1/scholarships/recommendations/enhanced
+ * Get enhanced personalized recommendations with three-tier categorization
+ */
+export const getEnhancedRecommendationsEndpoint = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 30;
 
+    const user = await User.findById(req.userId);
 
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found'
+      });
+    }
 
+    const recommendations = await getEnhancedRecommendations(user, { limit });
 
+    res.json({
+      status: 'success',
+      data: recommendations
+    });
+  } catch (error) {
+    logger.error('Get enhanced recommendations error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to get enhanced recommendations'
+    });
+  }
+};
 
+/**
+ * GET /api/v1/scholarships/:id/match-explanation
+ * Get detailed match explanation for a specific scholarship
+ */
+export const getMatchExplanationEndpoint = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.userId;
+
+    const explanation = await getMatchExplanation(userId, id);
+
+    res.json({
+      status: 'success',
+      data: explanation
+    });
+  } catch (error) {
+    logger.error('Get match explanation error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to get match explanation'
+    });
+  }
+};
