@@ -30,6 +30,10 @@ const UserSchema = new mongoose.Schema({
       enum: ['+2', 'Bachelor', 'Master', 'PhD'],
       default: null
     },
+    avatar: {
+      type: String,
+      trim: true
+    },
     major: {
       type: String,
       trim: true
@@ -46,6 +50,23 @@ const UserSchema = new mongoose.Schema({
     country: {
       type: String,
       trim: true
+    }
+  },
+  phone: {
+    type: String,
+    trim: true
+  },
+  preferences: {
+    language: {
+      type: String,
+      default: 'english'
+    },
+    notifications: {
+      scholarshipUpdates: { type: Boolean, default: true },
+      postStatus: { type: Boolean, default: true },
+      reminders: { type: Boolean, default: true },
+      emailNotifications: { type: Boolean, default: true },
+      pushNotifications: { type: Boolean, default: false }
     }
   },
   documents: [{
@@ -105,13 +126,13 @@ UserSchema.index({ role: 1 });
 UserSchema.index({ 'profile.preferredCountries': 1 });
 
 // Update timestamp on save
-UserSchema.pre('save', function(next) {
+UserSchema.pre('save', function (next) {
   this.updatedAt = Date.now();
   next();
 });
 
 // Remove password from JSON output
-UserSchema.methods.toJSON = function() {
+UserSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.passwordHash;
   delete obj.refreshToken;

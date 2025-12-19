@@ -29,6 +29,8 @@ router.get('/users/me', authenticate, usersController.getCurrentUser);
 router.put('/users/me', authenticate, usersController.updateCurrentUser);
 router.post('/users/me/documents', authenticate, usersController.addDocument);
 router.delete('/users/me/documents/:docId', authenticate, usersController.deleteDocument);
+router.post('/users/me/change-password', authenticate, usersController.changePassword);
+router.delete('/users/me', authenticate, usersController.deleteCurrentUser);
 
 // ========== SCHOLARSHIP ROUTES ==========
 router.get('/scholarships', optionalAuth, scholarshipsController.getScholarships);

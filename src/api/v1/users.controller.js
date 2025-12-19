@@ -2,6 +2,7 @@ import User from '../../models/user.model.js';
 import { validate, schemas } from '../../middlewares/validate.middleware.js';
 import { authenticate } from '../../middlewares/auth.middleware.js';
 import { logger } from '../../utils/logger.js';
+import { hashPassword, comparePassword } from '../../services/auth.service.js';
 
 /**
  * GET /api/v1/users/me
@@ -11,14 +12,14 @@ export const getCurrentUser = async (req, res) => {
   try {
     const user = await User.findById(req.userId)
       .populate('bookmarks', 'title country level deadline status');
-    
+
     if (!user) {
       return res.status(404).json({
         status: 'error',
         message: 'User not found'
       });
     }
-    
+
     res.json({
       status: 'success',
       data: { user }
@@ -39,7 +40,7 @@ export const getCurrentUser = async (req, res) => {
 export const updateCurrentUser = async (req, res) => {
   try {
     const updateData = {};
-    
+
     if (req.body.name) updateData.name = req.body.name;
     if (req.body.profile) {
       updateData.profile = {
@@ -47,15 +48,24 @@ export const updateCurrentUser = async (req, res) => {
         ...req.body.profile
       };
     }
-    
+
+    if (req.body.phone) updateData.phone = req.body.phone;
+
+    if (req.body.preferences) {
+      updateData.preferences = {
+        ...(req.user.preferences ? req.user.preferences.toObject() : {}),
+        ...req.body.preferences
+      };
+    }
+
     const user = await User.findByIdAndUpdate(
       req.userId,
       { $set: updateData },
       { new: true, runValidators: true }
     );
-    
+
     logger.info(`User profile updated: ${user.email}`);
-    
+
     res.json({
       status: 'success',
       message: 'Profile updated successfully',
@@ -77,16 +87,16 @@ export const updateCurrentUser = async (req, res) => {
 export const addDocument = async (req, res) => {
   try {
     const { type, name, url } = req.body;
-    
+
     if (!type || !name || !url) {
       return res.status(400).json({
         status: 'error',
         message: 'Type, name, and URL are required'
       });
     }
-    
+
     const user = await User.findById(req.userId);
-    
+
     user.documents.push({
       type,
       name,
@@ -94,11 +104,11 @@ export const addDocument = async (req, res) => {
       status: 'pending',
       uploadedAt: new Date()
     });
-    
+
     await user.save();
-    
+
     logger.info(`Document added for user: ${user.email}`);
-    
+
     res.status(201).json({
       status: 'success',
       message: 'Document uploaded successfully',
@@ -122,25 +132,25 @@ export const addDocument = async (req, res) => {
 export const deleteDocument = async (req, res) => {
   try {
     const { docId } = req.params;
-    
+
     const user = await User.findById(req.userId);
-    
+
     const docIndex = user.documents.findIndex(
       doc => doc._id.toString() === docId
     );
-    
+
     if (docIndex === -1) {
       return res.status(404).json({
         status: 'error',
         message: 'Document not found'
       });
     }
-    
+
     user.documents.splice(docIndex, 1);
     await user.save();
-    
+
     logger.info(`Document deleted for user: ${user.email}`);
-    
+
     res.json({
       status: 'success',
       message: 'Document deleted successfully'
@@ -151,6 +161,50 @@ export const deleteDocument = async (req, res) => {
       status: 'error',
       message: 'Failed to delete document'
     });
+  }
+};
+
+/**
+ * POST /api/v1/users/me/change-password
+ * Change password
+ */
+export const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ status: 'error', message: 'Current and new password are required' });
+    }
+
+    // Get user with password hash
+    const user = await User.findById(req.userId).select('+passwordHash');
+
+    const isValid = await comparePassword(currentPassword, user.passwordHash);
+    if (!isValid) {
+      return res.status(400).json({ status: 'error', message: 'Incorrect current password' });
+    }
+
+    user.passwordHash = await hashPassword(newPassword);
+    await user.save();
+
+    res.json({ status: 'success', message: 'Password updated successfully' });
+  } catch (error) {
+    logger.error('Change password error:', error);
+    res.status(500).json({ status: 'error', message: 'Failed to change password' });
+  }
+};
+
+/**
+ * DELETE /api/v1/users/me
+ * Delete current user account
+ */
+export const deleteCurrentUser = async (req, res) => {
+  try {
+    await User.findByIdAndDelete(req.userId);
+    res.json({ status: 'success', message: 'Account deleted successfully' });
+  } catch (error) {
+    logger.error('Delete account error:', error);
+    res.status(500).json({ status: 'error', message: 'Failed to delete account' });
   }
 };
 
