@@ -6,7 +6,7 @@ export const calendarController = {
     // Get all calendar events for the user (including saved scholarship deadlines and global events)
     getCalendarEvents: async (req, res) => {
         try {
-            const userId = req.user.userId;
+            const userId = req.userId;
 
             // 1. Fetch user-created events/reminders AND global events
             const customEvents = await CalendarEvent.find({
@@ -67,7 +67,7 @@ export const calendarController = {
     // Create a custom reminder or event
     createEvent: async (req, res) => {
         try {
-            const userId = req.user.userId;
+            const userId = req.userId;
             const { title, date, type, scholarshipId, reminderPreferences, note, isGlobal } = req.body;
 
             // Check if user is admin if they are trying to create a global event
@@ -110,7 +110,7 @@ export const calendarController = {
     deleteEvent: async (req, res) => {
         try {
             const { id } = req.params;
-            const userId = req.user.userId;
+            const userId = req.userId;
 
             const event = await CalendarEvent.findOneAndDelete({ _id: id, userId });
 
