@@ -72,7 +72,7 @@ const UserSchema = new mongoose.Schema({
   documents: [{
     type: {
       type: String,
-      enum: ['transcript', 'certificate', 'passport', 'ielts', 'other'],
+      enum: ['transcript', 'certificate', 'passport', 'ielts', 'sop', 'other'],
       required: true
     },
     name: {

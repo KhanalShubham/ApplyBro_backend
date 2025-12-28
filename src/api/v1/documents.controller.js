@@ -21,7 +21,7 @@ const upload = multer({
       'image/jpg',
       'image/png'
     ];
-    
+
     if (allowedMimes.includes(file.mimetype)) {
       cb(null, true);
     } else {
@@ -45,16 +45,16 @@ export const uploadDocument = [
           message: 'No file provided'
         });
       }
-      
+
       const { type, documentType } = req.body;
-      
+
       if (!type || !documentType) {
         return res.status(400).json({
           status: 'error',
           message: 'Type and documentType are required. Type: +2, bachelor, ielts, etc. DocumentType: transcript, certificate, ielts, etc.'
         });
       }
-      
+
       // Validate file type
       try {
         validateFileType(req.file.originalname, 'document');
@@ -64,7 +64,7 @@ export const uploadDocument = [
           message: error.message
         });
       }
-      
+
       // Save file locally
       const fileResult = await saveFileLocally(
         req.file.buffer,
@@ -72,7 +72,7 @@ export const uploadDocument = [
         'document',
         req.userId
       );
-      
+
       // Create document record with explicit pending status for admin verification
       const userDocument = await UserDocument.create({
         userId: req.userId,
@@ -86,7 +86,7 @@ export const uploadDocument = [
         parsingStatus: 'processing',
         status: 'pending' // Explicitly set to pending for admin verification
       });
-      
+
       // Also add to user's documents array for backward compatibility
       const user = await User.findById(req.userId);
       user.documents.push({
@@ -97,7 +97,7 @@ export const uploadDocument = [
         uploadedAt: new Date()
       });
       await user.save();
-      
+
       // Parse document asynchronously
       parseDocument(fileResult.key, req.file.mimetype, documentType)
         .then(async (parsedData) => {
@@ -105,7 +105,7 @@ export const uploadDocument = [
           userDocument.parsingStatus = 'completed';
           userDocument.parsedAt = new Date();
           await userDocument.save();
-          
+
           logger.info(`Document parsed successfully: ${userDocument._id}`, {
             userId: req.userId,
             level: parsedData.level,
@@ -118,9 +118,9 @@ export const uploadDocument = [
           userDocument.parsingError = error.message;
           await userDocument.save();
         });
-      
+
       logger.info(`Document uploaded: ${req.file.originalname} by user ${req.user.email}`);
-      
+
       res.status(201).json({
         status: 'success',
         message: 'Document uploaded successfully. Parsing in progress. Document is pending admin verification.',
@@ -156,19 +156,27 @@ export const getMyDocuments = async (req, res) => {
     const documents = await UserDocument.find({
       userId: req.userId
     }).sort({ uploadedAt: -1 }).lean();
-    
+
     // Transform documents to match frontend expectations
     const transformedDocuments = documents.map(doc => {
       // Map backend type values to frontend DocumentType format
+      // Handles both legacy lowercase and new uppercase values
       const typeMap = {
         '+2': '+2',
+        'Bachelor': 'Bachelor',
         'bachelor': 'Bachelor',
+        'IELTS': 'IELTS',
         'ielts': 'IELTS',
+        'SOP': 'SOP',
+        'sop': 'SOP',
+        'Master': 'Master',
         'master': 'Master',
+        'PhD': 'PhD',
         'phd': 'PhD',
+        'Other': 'Other',
         'other': 'Other'
       };
-      
+
       return {
         _id: doc._id,
         userId: doc.userId,
@@ -190,7 +198,7 @@ export const getMyDocuments = async (req, res) => {
         adminNote: doc.adminNote
       };
     });
-    
+
     res.json({
       status: 'success',
       data: {
@@ -214,19 +222,19 @@ export const getMyDocuments = async (req, res) => {
 export const getDocument = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const document = await UserDocument.findOne({
       _id: id,
       userId: req.userId
     });
-    
+
     if (!document) {
       return res.status(404).json({
         status: 'error',
         message: 'Document not found'
       });
     }
-    
+
     res.json({
       status: 'success',
       data: { document }
@@ -247,29 +255,29 @@ export const getDocument = async (req, res) => {
 export const deleteDocument = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const document = await UserDocument.findOne({
       _id: id,
       userId: req.userId
     });
-    
+
     if (!document) {
       return res.status(404).json({
         status: 'error',
         message: 'Document not found'
       });
     }
-    
+
     // Delete file from filesystem
     try {
       await fs.unlink(document.filePath);
     } catch (fileError) {
       logger.warn('File deletion failed (may not exist):', fileError);
     }
-    
+
     // Delete document record
     await UserDocument.findByIdAndDelete(id);
-    
+
     // Also remove from user's documents array
     const user = await User.findById(req.userId);
     if (user) {
@@ -278,9 +286,9 @@ export const deleteDocument = async (req, res) => {
       );
       await user.save();
     }
-    
+
     logger.info(`Document deleted: ${document.originalFilename} by user ${req.user.email}`);
-    
+
     res.json({
       status: 'success',
       message: 'Document deleted successfully'

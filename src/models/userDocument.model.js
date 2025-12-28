@@ -9,12 +9,12 @@ const UserDocumentSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['+2', 'bachelor', 'ielts', 'master', 'phd', 'other'],
+    enum: ['+2', 'Bachelor', 'IELTS', 'SOP', 'Master', 'PhD', 'Other'],
     required: true
   },
   documentType: {
     type: String,
-    enum: ['transcript', 'certificate', 'passport', 'ielts', 'other'],
+    enum: ['transcript', 'certificate', 'passport', 'ielts', 'sop', 'other'],
     required: true
   },
   originalFilename: {
