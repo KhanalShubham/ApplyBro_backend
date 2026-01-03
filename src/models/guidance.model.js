@@ -20,7 +20,7 @@ const GuidanceSchema = new mongoose.Schema({
     },
     topic: {
         type: String,
-        enum: ["IELTS", "DAAD", "SOP", "Visa", "Motivation Letter", "General"],
+        enum: ["IELTS", "DAAD", "SOP", "Visas", "Motivation Letter", "General"],
         default: "General"
     },
     videoUrl: String, // for videos

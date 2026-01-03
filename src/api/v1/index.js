@@ -120,4 +120,8 @@ router.use('/guidance', guidanceRoutes);
 import calendarRoutes from './calendar.routes.js';
 router.use('/calendar', calendarRoutes);
 
+// ========== CREDIT TRANSFER ROUTES ==========
+import creditTransferRoutes from './creditTransfer.routes.js';
+router.use('/credit-transfer', creditTransferRoutes);
+
 export default router;

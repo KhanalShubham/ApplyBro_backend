@@ -48,11 +48,11 @@ const ScholarshipSchema = new mongoose.Schema({
     type: String,
     trim: true
   }],
-  level: {
+  level: [{
     type: String,
-    enum: ['+2', 'Bachelor', 'Master', 'PhD'],
+    enum: ['+2', 'Bachelor', 'Master', 'PhD', 'Undergraduate', 'Graduate', 'Short Course'],
     required: [true, 'Education level is required']
-  },
+  }],
   fields: [{
     type: String,
     trim: true
@@ -110,11 +110,11 @@ const ScholarshipSchema = new mongoose.Schema({
 });
 
 // Text search indexes
-ScholarshipSchema.index({ 
-  title: 'text', 
-  description: 'text', 
-  country: 'text', 
-  fields: 'text' 
+ScholarshipSchema.index({
+  title: 'text',
+  description: 'text',
+  country: 'text',
+  fields: 'text'
 });
 
 // Other indexes for filtering
@@ -125,9 +125,9 @@ ScholarshipSchema.index({ deadline: 1 });
 ScholarshipSchema.index({ verified: 1 });
 
 // Update timestamp
-ScholarshipSchema.pre('save', function(next) {
+ScholarshipSchema.pre('save', function (next) {
   this.updatedAt = Date.now();
-  
+
   // Auto-update status based on deadline
   if (this.deadline) {
     const now = new Date();
@@ -140,7 +140,7 @@ ScholarshipSchema.pre('save', function(next) {
       }
     }
   }
-  
+
   next();
 });
 
