@@ -6,6 +6,7 @@ import User from '../../models/user.model.js';
 import { authenticate } from '../../middlewares/auth.middleware.js';
 import { parseDocument } from '../../services/documentParser.service.js';
 import { saveFileLocally, validateFileType } from '../../services/s3.service.js';
+import { indexDocumentWithAI } from '../../services/ai.service.js';
 import { logger } from '../../utils/logger.js';
 
 // Configure multer for document uploads
@@ -118,6 +119,12 @@ export const uploadDocument = [
           userDocument.parsingError = error.message;
           await userDocument.save();
         });
+
+      // Also forward to AI Engine for RAG indexing
+      if (req.file.mimetype === 'application/pdf') {
+        indexDocumentWithAI(req.file.buffer, req.file.originalname)
+          .catch(err => logger.error('Background AI indexing failed:', err));
+      }
 
       logger.info(`Document uploaded: ${req.file.originalname} by user ${req.user.email}`);
 

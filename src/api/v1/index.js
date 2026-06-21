@@ -12,6 +12,7 @@ import * as adminController from './admin.controller.js';
 import * as uploadsController from './uploads.controller.js';
 import * as documentsController from './documents.controller.js';
 import * as matchingController from './matching.controller.js';
+import * as aiController from './ai.controller.js';
 import savedItemsRoutes from './savedItems.routes.js';
 import guidanceRoutes from './guidance.routes.js';
 
@@ -123,5 +124,9 @@ router.use('/calendar', calendarRoutes);
 // ========== CREDIT TRANSFER ROUTES ==========
 import creditTransferRoutes from './creditTransfer.routes.js';
 router.use('/credit-transfer', creditTransferRoutes);
+
+// ========== AI ROUTES ==========
+router.post('/ai/ask', authenticate, aiController.askQuestion);
+router.post('/ai/moderate', authenticate, aiController.moderateText);
 
 export default router;

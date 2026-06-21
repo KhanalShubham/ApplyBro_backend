@@ -1,6 +1,7 @@
 import pdfParse from 'pdf-parse';
 import { createWorker } from 'tesseract.js';
 import { logger } from '../utils/logger.js';
+import { extractMetadataWithAI } from './ai.service.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -247,13 +248,33 @@ export const parseDocument = async (filePath, mimeType, documentType) => {
       extractionConfidence: extractionResult.confidence
     };
     
-    // Extract common fields
+    // Extract common fields using Regex (Legacy/Fallback)
     parsedData.level = extractLevel(text);
     parsedData.gpa = extractGPA(text);
     parsedData.percentage = extractPercentage(text);
     parsedData.stream = extractStream(text);
     parsedData.passingYear = extractPassingYear(text);
     
+    // ENHANCEMENT: Use AI to extract more accurate metadata
+    try {
+      const aiMetadata = await extractMetadataWithAI(text);
+      if (aiMetadata) {
+        logger.info('AI Metadata Extraction successful, merging results');
+        // Override with AI results if they exist and are better
+        if (aiMetadata.level) parsedData.level = aiMetadata.level;
+        if (aiMetadata.gpa) parsedData.gpa = aiMetadata.gpa;
+        if (aiMetadata.stream) parsedData.stream = aiMetadata.stream;
+        if (aiMetadata.passing_year) parsedData.passingYear = aiMetadata.passing_year;
+        if (aiMetadata.english_score) {
+          if (!parsedData.englishScore) parsedData.englishScore = {};
+          parsedData.englishScore.overall = aiMetadata.english_score;
+        }
+        parsedData.aiEnhanced = true;
+      }
+    } catch (aiError) {
+      logger.warn('AI Metadata extraction failed, falling back to Regex only:', aiError.message);
+    }
+
     // Extract IELTS scores if it's an IELTS document
     if (documentType === 'ielts' || text.toLowerCase().includes('ielts')) {
       const ieltsScores = extractIELTSScores(text);

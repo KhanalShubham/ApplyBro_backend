@@ -6,12 +6,10 @@ import { sendPostModerationEmail } from '../../services/email.service.js';
 import { authenticate, requireAdmin } from '../../middlewares/auth.middleware.js';
 import { validate, schemas } from '../../middlewares/validate.middleware.js';
 import { logger } from '../../utils/logger.js';
+import { moderateTextWithAI } from '../../services/ai.service.js';
 import sanitizeHtml from 'sanitize-html';
 
-/**
- * GET /api/v1/posts
- * Get all posts with filters (only approved for non-admins)
- */
+
 export const getPosts = async (req, res) => {
   try {
     const {
@@ -238,6 +236,17 @@ export const createPost = async (req, res) => {
       });
     }
     
+    // AI Content Moderation
+    const moderation = await moderateTextWithAI(`${title} ${sanitizedBody}`);
+    let initialStatus = 'pending';
+    let adminNote = '';
+
+    if (moderation.is_toxic) {
+      initialStatus = 'declined';
+      adminNote = `Automatically flagged by AI for toxic content (Score: ${moderation.score.toFixed(2)}).`;
+      logger.warn(`Post automatically declined by AI moderation: ${title} by ${req.user.email}`);
+    }
+
     const post = await Post.create({
       author: req.userId,
       title: title.trim(),
@@ -246,7 +255,9 @@ export const createPost = async (req, res) => {
       tags: tags || [],
       country: country || '',
       category: category || 'Other',
-      status: 'pending' // All posts start as pending
+      status: initialStatus,
+      declineReason: adminNote,
+      moderationScore: moderation.score
     });
     
     await post.populate('author', 'name email avatar');
@@ -263,6 +274,7 @@ export const createPost = async (req, res) => {
           _id: post._id,
           title: post.title,
           status: post.status,
+          declineReason: post.declineReason,
           createdAt: post.createdAt
         }
       }

@@ -1,7 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
-yarn.lock
 
 # Environment variables
 .env
@@ -38,9 +36,9 @@ coverage/
 # Docker
 docker-compose.override.yml
 
+# OCR training data cache
+eng.traineddata
+*.traineddata
 
-
-
-
-
-
+# User uploaded files
+uploads/
